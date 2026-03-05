@@ -1,0 +1,405 @@
+'=============================================================================
+' CREATE QUARTERLY REVENUE UPDATE TEMPLATE
+' VBA Macro — Paste into Excel VBA Editor (Alt+F11) and Run
+'
+' HOW TO USE:
+'   1. Open any Excel workbook
+'   2. Press Alt+F11 to open the VBA Editor
+'   3. Click Insert > Module
+'   4. Paste this entire code into the module
+'   5. Press F5 (or click Run > Run Sub) to execute
+'=============================================================================
+
+Sub CreateRevenueTemplate()
+
+    Dim wb  As Workbook
+    Dim ws  As Worksheet
+    Set wb = Workbooks.Add
+    Set ws = wb.Sheets(1)
+    ws.Name = "Q Revenue Update"
+    ws.DisplayGridlines = False
+    ws.Tab.Color = RGB(13, 27, 42)
+
+    Const cDarkNavy   As Long = 1842701
+    Const cMidNavy    As Long = 6041883
+    Const cLightBlue  As Long = 10711594
+    Const cAccentBlue As Long = 14319305
+    Const cLightGray  As Long = 16120306
+    Const cWhite      As Long = 16777215
+    Const cBlack      As Long = 0
+
+    ws.Columns("A").ColumnWidth = 2
+    ws.Columns("B").ColumnWidth = 28
+    ws.Columns("C").ColumnWidth = 14
+    ws.Columns("D").ColumnWidth = 14
+    ws.Columns("E").ColumnWidth = 14
+    ws.Columns("F").ColumnWidth = 14
+    ws.Columns("G").ColumnWidth = 14
+    ws.Columns("H").ColumnWidth = 2
+
+    Dim r As Long
+    For r = 1 To 60
+        ws.Rows(r).RowHeight = 18
+    Next r
+
+    ' ── HEADER BANNER ──
+    ws.Rows(1).RowHeight = 8
+    ws.Range("A1:H1").Interior.Color = cDarkNavy
+
+    ws.Rows(2).RowHeight = 38
+    ws.Rows(3).RowHeight = 14
+    ws.Rows(4).RowHeight = 14
+    ws.Range("A2:H4").Merge
+    With ws.Range("A2")
+        .Value = "QUARTERLY REVENUE UPDATE"
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 18 : .Font.Color = cWhite
+        .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+    End With
+
+    ws.Rows(5).RowHeight = 22
+    ws.Range("A5:H5").Merge
+    With ws.Range("A5")
+        .Value = "As of Business Day 5  |  Q1 2025  |  Prepared for Executive Review"
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Italic = True : .Font.Size = 10
+        .Font.Color = RGB(160, 180, 200)
+        .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+    End With
+
+    ws.Rows(6).RowHeight = 4
+    ws.Range("A6:H6").Interior.Color = cAccentBlue
+    ws.Rows(7).RowHeight = 10
+
+    ' ── COLUMN HEADERS ──
+    ws.Rows(8).RowHeight = 36
+    Dim hdrCols  As Variant
+    Dim hdrTexts As Variant
+    hdrCols  = Array("B", "C", "D", "E", "F", "G")
+    hdrTexts = Array("Revenue Type", "BD5" & Chr(10) & "Actual ($)", _
+                     "Q Target ($)", "Pacing" & Chr(10) & "vs. Target", _
+                     "Prior Q" & Chr(10) & "Actual ($)", "QoQ" & Chr(10) & "Change")
+
+    Dim i As Long
+    For i = 0 To 5
+        With ws.Cells(8, ws.Range(hdrCols(i) & "1").Column)
+            .Value = hdrTexts(i)
+            .Interior.Color = cMidNavy
+            .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 10 : .Font.Color = cWhite
+            .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter : .WrapText = True
+            .Borders(xlEdgeRight).LineStyle = xlContinuous
+            .Borders(xlEdgeRight).Color = RGB(46, 95, 138)
+            .Borders(xlEdgeBottom).LineStyle = xlMedium
+            .Borders(xlEdgeBottom).Color = cAccentBlue
+        End With
+    Next i
+
+    ' ── DATA ROWS ──
+    Dim dataRows As Variant
+    dataRows = Array( _
+        Array("INCLUSIVE REVENUE",     0,       0,       0,       "header", True), _
+        Array("  Recurring Fees",       1250000, 3800000, 3600000, "",       False), _
+        Array("  Usage-Based",          320000,  1100000, 980000,  "alt",    False), _
+        Array("  Add-On Services",      180000,  600000,  520000,  "",       False), _
+        Array("  Inclusive Subtotal",   1750000, 5500000, 5100000, "sub",    True), _
+        Array("",                       0,       0,       0,       "space",  False), _
+        Array("PREPAID REVENUE",        0,       0,       0,       "header", True), _
+        Array("  Prepaid Contracts",    820000,  2500000, 2200000, "",       False), _
+        Array("  Advance Billings",     410000,  1400000, 1250000, "alt",    False), _
+        Array("  Prepaid Subtotal",     1230000, 3900000, 3450000, "sub",    True), _
+        Array("",                       0,       0,       0,       "space",  False), _
+        Array("NON-RECURRING REVENUE",  0,       0,       0,       "header", True), _
+        Array("  One-Time Projects",    530000,  1200000, 900000,  "",       False), _
+        Array("  Implementation Fees",  210000,  650000,  580000,  "alt",    False), _
+        Array("  Other NRR",            90000,   350000,  290000,  "",       False), _
+        Array("  NRR Subtotal",         830000,  2200000, 1770000, "sub",    True), _
+        Array("",                       0,       0,       0,       "space",  False) _
+    )
+
+    Dim dataStart As Long : dataStart = 9
+    Dim inclSubRow As Long, prepSubRow As Long, nrrSubRow As Long
+    inclSubRow = 0 : prepSubRow = 0 : nrrSubRow = 0
+    Dim curRow As Long : curRow = dataStart
+
+    For i = 0 To UBound(dataRows)
+        Dim dRow   As Variant : dRow   = dataRows(i)
+        Dim lbl    As String  : lbl    = dRow(0)
+        Dim bd5    As Double  : bd5    = dRow(1)
+        Dim qTgt   As Double  : qTgt   = dRow(2)
+        Dim priorQ As Double  : priorQ = dRow(3)
+        Dim bgType As String  : bgType = dRow(4)
+        Dim isSub  As Boolean : isSub  = dRow(5)
+
+        If bgType = "space" Then
+            ws.Rows(curRow).RowHeight = 8
+            ws.Range("A" & curRow & ":H" & curRow).Interior.Color = cWhite
+            curRow = curRow + 1
+        Else
+            ws.Rows(curRow).RowHeight = 22
+
+            Dim bgColor As Long
+            Select Case bgType
+                Case "header" : bgColor = cMidNavy
+                Case "sub"    : bgColor = cLightBlue
+                Case "alt"    : bgColor = cLightGray
+                Case Else     : bgColor = cWhite
+            End Select
+
+            ws.Cells(curRow, 1).Interior.Color = cWhite
+            ws.Cells(curRow, 8).Interior.Color = cWhite
+
+            With ws.Cells(curRow, 2)
+                .Value = lbl
+                .Interior.Color = bgColor
+                .Font.Name = "Arial" : .Font.Size = 10 : .Font.Bold = isSub
+                .Font.Italic = (Not isSub) And (Left(lbl, 2) = "  ")
+                If isSub Then .Font.Color = cWhite Else .Font.Color = cBlack
+                .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+                Call ApplyThinBorder(ws.Cells(curRow, 2))
+            End With
+
+            With ws.Cells(curRow, 3)
+                If bd5 > 0 Then .Value = bd5
+                .NumberFormat = "$#,##0;($#,##0);""-"""
+                .Interior.Color = bgColor
+                .Font.Name = "Arial" : .Font.Size = 10 : .Font.Bold = isSub
+                If isSub Then .Font.Color = cWhite Else .Font.Color = cBlack
+                .HorizontalAlignment = xlRight : .VerticalAlignment = xlCenter
+                Call ApplyThinBorder(ws.Cells(curRow, 3))
+            End With
+
+            With ws.Cells(curRow, 4)
+                If qTgt > 0 Then .Value = qTgt
+                .NumberFormat = "$#,##0;($#,##0);""-"""
+                .Interior.Color = bgColor
+                .Font.Name = "Arial" : .Font.Size = 10 : .Font.Bold = isSub
+                If isSub Then .Font.Color = cWhite Else .Font.Color = cBlack
+                .HorizontalAlignment = xlRight : .VerticalAlignment = xlCenter
+                Call ApplyThinBorder(ws.Cells(curRow, 4))
+            End With
+
+            With ws.Cells(curRow, 5)
+                If bd5 > 0 And qTgt > 0 Then .Formula = "=C" & curRow & "/D" & curRow
+                .NumberFormat = "0.0%;(0.0%);""-"""
+                .Interior.Color = bgColor
+                .Font.Name = "Arial" : .Font.Size = 10 : .Font.Bold = isSub
+                If isSub Then .Font.Color = cWhite Else .Font.Color = cBlack
+                .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+                Call ApplyThinBorder(ws.Cells(curRow, 5))
+            End With
+
+            With ws.Cells(curRow, 6)
+                If priorQ > 0 Then .Value = priorQ
+                .NumberFormat = "$#,##0;($#,##0);""-"""
+                .Interior.Color = bgColor
+                .Font.Name = "Arial" : .Font.Size = 10 : .Font.Bold = isSub
+                If isSub Then .Font.Color = cWhite Else .Font.Color = cBlack
+                .HorizontalAlignment = xlRight : .VerticalAlignment = xlCenter
+                Call ApplyThinBorder(ws.Cells(curRow, 6))
+            End With
+
+            With ws.Cells(curRow, 7)
+                If bd5 > 0 And priorQ > 0 Then .Formula = "=(C" & curRow & "-F" & curRow & ")/F" & curRow
+                .NumberFormat = "0.0%;(0.0%);""-"""
+                .Interior.Color = bgColor
+                .Font.Name = "Arial" : .Font.Size = 10 : .Font.Bold = isSub
+                If isSub Then .Font.Color = cWhite Else .Font.Color = cBlack
+                .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+                Call ApplyThinBorder(ws.Cells(curRow, 7))
+            End With
+
+            If InStr(lbl, "Inclusive Subtotal") > 0 Then inclSubRow = curRow
+            If InStr(lbl, "Prepaid Subtotal")   > 0 Then prepSubRow = curRow
+            If InStr(lbl, "NRR Subtotal")        > 0 Then nrrSubRow  = curRow
+
+            curRow = curRow + 1
+        End If
+    Next i
+
+    ' ── GRAND TOTAL ROW ──
+    Dim gtRow As Long : gtRow = curRow
+    ws.Rows(gtRow).RowHeight = 28
+    ws.Cells(gtRow, 1).Interior.Color = cDarkNavy
+    ws.Cells(gtRow, 8).Interior.Color = cDarkNavy
+
+    With ws.Cells(gtRow, 2)
+        .Value = "TOTAL REVENUE"
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 11 : .Font.Color = cWhite
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        Call ApplyGrandTotalBorder(.Cells)
+    End With
+
+    With ws.Cells(gtRow, 3)
+        .Formula = "=C" & inclSubRow & "+C" & prepSubRow & "+C" & nrrSubRow
+        .NumberFormat = "$#,##0;($#,##0);""-"""
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 11 : .Font.Color = cWhite
+        .HorizontalAlignment = xlRight : .VerticalAlignment = xlCenter
+        Call ApplyGrandTotalBorder(.Cells)
+    End With
+
+    With ws.Cells(gtRow, 4)
+        .Formula = "=D" & inclSubRow & "+D" & prepSubRow & "+D" & nrrSubRow
+        .NumberFormat = "$#,##0;($#,##0);""-"""
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 11 : .Font.Color = cWhite
+        .HorizontalAlignment = xlRight : .VerticalAlignment = xlCenter
+        Call ApplyGrandTotalBorder(.Cells)
+    End With
+
+    With ws.Cells(gtRow, 5)
+        .Formula = "=C" & gtRow & "/D" & gtRow
+        .NumberFormat = "0.0%;(0.0%);""-"""
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 11 : .Font.Color = cWhite
+        .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+        Call ApplyGrandTotalBorder(.Cells)
+    End With
+
+    With ws.Cells(gtRow, 6)
+        .Formula = "=F" & inclSubRow & "+F" & prepSubRow & "+F" & nrrSubRow
+        .NumberFormat = "$#,##0;($#,##0);""-"""
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 11 : .Font.Color = cWhite
+        .HorizontalAlignment = xlRight : .VerticalAlignment = xlCenter
+        Call ApplyGrandTotalBorder(.Cells)
+    End With
+
+    With ws.Cells(gtRow, 7)
+        .Formula = "=(C" & gtRow & "-F" & gtRow & ")/F" & gtRow
+        .NumberFormat = "0.0%;(0.0%);""-"""
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 11 : .Font.Color = cWhite
+        .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+        Call ApplyGrandTotalBorder(.Cells)
+    End With
+
+    ' ── CONDITIONAL FORMATTING ──
+    Dim pacingRng As Range : Set pacingRng = ws.Range("E" & dataStart & ":E" & gtRow)
+    Dim qoqRng    As Range : Set qoqRng    = ws.Range("G" & dataStart & ":G" & gtRow)
+
+    With pacingRng.FormatConditions.Add(Type:=xlCellValue, Operator:=xlGreaterEqual, Formula1:="0.13")
+        .Interior.Color = RGB(232, 245, 238) : .Font.Color = RGB(30, 124, 68) : .Font.Bold = True
+    End With
+    With pacingRng.FormatConditions.Add(Type:=xlCellValue, Operator:=xlBetween, Formula1:="0.10", Formula2:="0.1299")
+        .Interior.Color = RGB(254, 249, 236) : .Font.Color = RGB(184, 134, 11) : .Font.Bold = True
+    End With
+    With pacingRng.FormatConditions.Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0.10")
+        .Interior.Color = RGB(253, 237, 236) : .Font.Color = RGB(192, 57, 43) : .Font.Bold = True
+    End With
+    With qoqRng.FormatConditions.Add(Type:=xlCellValue, Operator:=xlGreater, Formula1:="0")
+        .Interior.Color = RGB(232, 245, 238) : .Font.Color = RGB(30, 124, 68) : .Font.Bold = True
+    End With
+    With qoqRng.FormatConditions.Add(Type:=xlCellValue, Operator:=xlLess, Formula1:="0")
+        .Interior.Color = RGB(253, 237, 236) : .Font.Color = RGB(192, 57, 43) : .Font.Bold = True
+    End With
+
+    ' ── LEGEND ──
+    curRow = gtRow + 2
+    ws.Rows(curRow).RowHeight = 18
+    ws.Range("B" & curRow & ":G" & curRow).Merge
+    With ws.Cells(curRow, 2)
+        .Value = "PACING KEY  (BD5 Actual " & Chr(247) & " Q Target)"
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 9 : .Font.Color = RGB(27, 58, 92)
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+    End With
+    curRow = curRow + 1
+
+    Dim legendData As Variant
+    legendData = Array( _
+        Array(RGB(30, 124, 68),  RGB(232, 245, 238), Chr(8805) & " 13.0%  " & Chr(8212) & "  On Pace"), _
+        Array(RGB(184, 134, 11), RGB(254, 249, 236), "10.0% " & Chr(8211) & " 12.9%  " & Chr(8212) & "  Watch"), _
+        Array(RGB(192, 57, 43),  RGB(253, 237, 236), "< 10.0%  " & Chr(8212) & "  Behind Pace") _
+    )
+
+    Dim li As Long
+    For li = 0 To 2
+        ws.Rows(curRow).RowHeight = 18
+        With ws.Cells(curRow, 2)
+            .Interior.Color = legendData(li)(1)
+            .Borders.LineStyle = xlContinuous : .Borders.Color = RGB(187, 187, 187)
+        End With
+        ws.Range("C" & curRow & ":G" & curRow).Merge
+        With ws.Cells(curRow, 3)
+            .Value = legendData(li)(2)
+            .Font.Name = "Arial" : .Font.Size = 9 : .Font.Bold = True
+            .Font.Color = legendData(li)(0)
+            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+        End With
+        curRow = curRow + 1
+    Next li
+
+    ' ── NOTES BOX ──
+    curRow = curRow + 1
+    ws.Rows(curRow).RowHeight = 18
+    ws.Range("B" & curRow & ":G" & curRow).Merge
+    With ws.Cells(curRow, 2)
+        .Value = "NOTES & COMMENTARY"
+        .Interior.Color = RGB(27, 58, 92)
+        .Font.Name = "Arial" : .Font.Bold = True : .Font.Size = 10 : .Font.Color = cWhite
+        .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter
+    End With
+    curRow = curRow + 1
+
+    Dim noteLines As Variant
+    noteLines = Array( _
+        Chr(8226) & "  Replace input cells with actuals as reported.", _
+        Chr(8226) & "  Pacing benchmark: BD5 should represent ~13% of quarterly target (1 of ~20 BDs).", _
+        Chr(8226) & "  QoQ Change compares BD5 actuals to same-period prior quarter actuals.", _
+        Chr(8226) & "  Prior Q column can be updated to reflect audited prior quarter figures." _
+    )
+    Dim ni As Long
+    For ni = 0 To 3
+        ws.Rows(curRow).RowHeight = 18
+        ws.Range("B" & curRow & ":G" & curRow).Merge
+        With ws.Cells(curRow, 2)
+            .Value = noteLines(ni)
+            .Interior.Color = RGB(242, 245, 249)
+            .Font.Name = "Arial" : .Font.Size = 9 : .Font.Italic = True : .Font.Color = RGB(68, 68, 68)
+            .HorizontalAlignment = xlLeft : .VerticalAlignment = xlCenter : .WrapText = True
+            .Borders(xlEdgeBottom).LineStyle = xlHairline : .Borders(xlEdgeBottom).Color = RGB(214, 220, 228)
+        End With
+        curRow = curRow + 1
+    Next ni
+
+    ' ── FOOTER ──
+    curRow = curRow + 1
+    ws.Rows(curRow).RowHeight = 20
+    ws.Range("A" & curRow & ":H" & curRow).Merge
+    With ws.Cells(curRow, 1)
+        .Value = "CONFIDENTIAL  |  " & Format(Date, "MMMM DD, YYYY") & "  |  Finance Department"
+        .Interior.Color = cDarkNavy
+        .Font.Name = "Arial" : .Font.Size = 8 : .Font.Italic = True : .Font.Color = RGB(170, 170, 170)
+        .HorizontalAlignment = xlCenter : .VerticalAlignment = xlCenter
+    End With
+
+    ' ── FREEZE PANES & PRINT SETTINGS ──
+    ws.Activate
+    ws.Range("B9").Select
+    ActiveWindow.FreezePanes = True
+
+    With ws.PageSetup
+        .Orientation = xlLandscape
+        .FitToPagesWide = 1 : .FitToPagesTall = False
+        .LeftMargin = Application.InchesToPoints(0.5)
+        .RightMargin = Application.InchesToPoints(0.5)
+        .PrintTitleRows = "$1:$8"
+    End With
+
+    MsgBox "Template created successfully!", vbInformation, "Done"
+
+End Sub
+
+Private Sub ApplyThinBorder(cell As Range)
+    With cell.Borders
+        .LineStyle = xlContinuous : .Color = RGB(214, 220, 228) : .Weight = xlThin
+    End With
+End Sub
+
+Private Sub ApplyGrandTotalBorder(cell As Range)
+    With cell
+        .Borders(xlEdgeTop).LineStyle    = xlMedium : .Borders(xlEdgeTop).Color    = RGB(74, 144, 217)
+        .Borders(xlEdgeBottom).LineStyle = xlMedium : .Borders(xlEdgeBottom).Color = RGB(74, 144, 217)
+    End With
+End Sub
