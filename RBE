@@ -1,0 +1,392 @@
+# Power Query (M) Code — Revenue Analysis Model
+
+**Companion file to `Revenue_BD5_Shell.xlsx`**
+
+This file contains every Power Query you need to paste into the workbook's Power Query Editor. Queries are listed in the order they should be created. Each query loads to the Data Model only (right-click query → **Load To → Only Create Connection + Add to Data Model**).
+
+---
+
+## How to use this file
+
+1. Open the workbook → **Data → Get Data → Launch Power Query Editor**
+2. For each query below: **Home → New Source → Blank Query**, then **View → Advanced Editor**, paste the M code, click **Done**, name the query exactly as shown
+3. After all queries are created: **Home → Close & Load To → Only Create Connection → Add this data to the Data Model**
+4. Open Power Pivot (**Data → Manage Data Model**), create the relationships listed at the bottom of this file
+5. Add the DAX measures (see workbook's "DAX Measures" tab)
+
+---
+
+## Setup — Parameters
+
+Before pasting the queries, create a parameter for the source folder so the path lives in one place. **Home → Manage Parameters → New Parameter**:
+
+| Field | Value |
+|---|---|
+| Name | `PMS_Source_Folder` |
+| Type | Text |
+| Suggested Values | Any value |
+| Current Value | `https://yourtenant.sharepoint.com/sites/yoursite/Shared Documents/PMS_Exports/` |
+
+Replace the URL with your actual SharePoint folder. If you're using a local file path, use the format `C:\Users\YourName\Folder\`.
+
+---
+
+## Query 1: PMS_Raw
+
+Loads every PMS export file in the source folder, combines them, and applies first-pass cleaning. Designed for a folder of monthly CSVs (one file per refresh).
+
+```m
+let
+    // ─────────────────────────────────────────────────────────────
+    // Source: SharePoint folder containing PMS exports
+    // (Swap SharePoint.Files for Folder.Files if loading from local drive)
+    // ─────────────────────────────────────────────────────────────
+    Source = SharePoint.Files(PMS_Source_Folder, [ApiVersion = 15]),
+
+    // Filter to CSV exports only (adjust extension to .xlsx if needed)
+    FilterCSV = Table.SelectRows(Source, each Text.EndsWith([Name], ".csv")),
+
+    // Combine all files in the folder into one table
+    Combined = Table.Combine(
+        List.Transform(
+            FilterCSV[Content],
+            each Csv.Document(_, [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv])
+        )
+    ),
+
+    // Promote headers
+    Promoted = Table.PromoteHeaders(Combined, [PromoteAllScalars = true]),
+
+    // Filter out any repeated header rows that appear after the first file
+    NoRepeatedHeaders = Table.SelectRows(Promoted, each [Project_ID] <> "Project_ID"),
+
+    // ─────────────────────────────────────────────────────────────
+    // Type the columns. Adjust the column names below to match
+    // your actual PMS export column names exactly.
+    // ─────────────────────────────────────────────────────────────
+    Typed = Table.TransformColumnTypes(NoRepeatedHeaders, {
+        {"Date",            type date},
+        {"Project_ID",      type text},
+        {"Task",            type text},
+        {"Consultant",      type text},
+        {"Hours",           type number},
+        {"Billable",        type text},
+        {"Rate",            type number},
+        {"Currency",        type text},
+        {"Estimated_Total", type number}
+    }),
+
+    // Drop blank rows (no Project_ID or zero hours)
+    NoBlanks = Table.SelectRows(Typed, each [Project_ID] <> null and [Hours] <> null and [Hours] <> 0),
+
+    // ─────────────────────────────────────────────────────────────
+    // Derived columns used for joins and reporting
+    // ─────────────────────────────────────────────────────────────
+    AddPeriod = Table.AddColumn(NoBlanks, "Period",
+        each Date.ToText([Date], "yyyy-MM"), type text),
+
+    AddYear = Table.AddColumn(AddPeriod, "Year",
+        each Date.Year([Date]), Int64.Type),
+
+    AddQuarter = Table.AddColumn(AddYear, "Quarter",
+        each "Q" & Text.From(Date.QuarterOfYear([Date])), type text),
+
+    // Join keys (text concatenations — match the bridge tables)
+    AddCcyPeriod = Table.AddColumn(AddQuarter, "Currency_Period",
+        each [Currency] & "|" & [Period], type text),
+
+    // Normalize Billable flag — handles "Yes/No", "Y/N", "TRUE/FALSE", 1/0
+    NormalizeBillable = Table.AddColumn(AddCcyPeriod, "Billable_Flag",
+        each if [Billable] = null then "N"
+             else if Text.Upper(Text.Start(Text.From([Billable]), 1)) = "Y" then "Y"
+             else if Text.Upper(Text.Start(Text.From([Billable]), 1)) = "T" then "Y"
+             else if [Billable] = "1" then "Y"
+             else "N",
+        type text),
+
+    // Drop the original (string) Billable column to avoid confusion
+    RemoveOriginal = Table.RemoveColumns(NormalizeBillable, {"Billable"}),
+    RenameFlag = Table.RenameColumns(RemoveOriginal, {{"Billable_Flag", "Billable"}})
+
+in
+    RenameFlag
+```
+
+**Edit the column names** in the `Typed` step to match your PMS exactly. Common variations: `Hours_Logged`, `Bill_Rate`, `Project Code`, `Task Name`. Power Query is case-sensitive on column names.
+
+---
+
+## Query 2: Project_Master
+
+Loads the Project Master bridge table from the workbook.
+
+```m
+let
+    Source = Excel.CurrentWorkbook(){[Name = "ProjectMaster"]}[Content],
+
+    Typed = Table.TransformColumnTypes(Source, {
+        {"Project ID",         type text},
+        {"Client",             type text},
+        {"Region",             type text},
+        {"Product",            type text},
+        {"Project Type",       type text},
+        {"Internal/3rd Party", type text},
+        {"Region_Product",     type text}
+    }),
+
+    Renamed = Table.RenameColumns(Typed, {
+        {"Project ID",         "Project_ID"},
+        {"Project Type",       "Project_Type"},
+        {"Internal/3rd Party", "Internal_3rd_Party"}
+    })
+in
+    Renamed
+```
+
+**Before loading:** In the workbook, select the data range on the **Project Master** tab (rows 5 onward, columns B–H), then **Formulas → Define Name → ProjectMaster** (or convert to an Excel Table named `ProjectMaster`). The query above looks for that named range / Table.
+
+---
+
+## Query 3: FX_Rates
+
+```m
+let
+    Source = Excel.CurrentWorkbook(){[Name = "FXRates"]}[Content],
+
+    Typed = Table.TransformColumnTypes(Source, {
+        {"Currency",            type text},
+        {"Period",              type text},
+        {"Currency_Period",     type text},
+        {"Spot Rate to USD",    type number},
+        {"Budget Rate to USD",  type number}
+    }),
+
+    Renamed = Table.RenameColumns(Typed, {
+        {"Spot Rate to USD",   "Spot_Rate"},
+        {"Budget Rate to USD", "Budget_Rate"}
+    })
+in
+    Renamed
+```
+
+Define name `FXRates` on the FX Rates tab covering columns B–F from row 5 down.
+
+---
+
+## Query 4: Region_Product_Map
+
+```m
+let
+    Source = Excel.CurrentWorkbook(){[Name = "RegionProductMap"]}[Content],
+
+    Typed = Table.TransformColumnTypes(Source, {
+        {"Region",         type text},
+        {"Product",        type text},
+        {"Region_Product", type text},
+        {"Active",         type text}
+    }),
+
+    ActiveOnly = Table.SelectRows(Typed, each [Active] = "Y")
+in
+    ActiveOnly
+```
+
+Define name `RegionProductMap` on the Region Product Map tab.
+
+---
+
+## Query 5: Budget
+
+Budget arrives wide (Region/Product as rows, months as columns) and needs to be unpivoted to long for the data model.
+
+```m
+let
+    Source = Excel.CurrentWorkbook(){[Name = "BudgetTable"]}[Content],
+
+    Typed = Table.TransformColumnTypes(Source, {
+        {"Region",         type text},
+        {"Product",        type text},
+        {"Region_Product", type text}
+    }),
+
+    // Unpivot every month column. The "unpivotOther" approach catches all
+    // remaining columns regardless of how many months are in the table.
+    Unpivoted = Table.UnpivotOtherColumns(
+        Typed,
+        {"Region", "Product", "Region_Product"},
+        "Period",
+        "Budget_USD"
+    ),
+
+    BudgetTyped = Table.TransformColumnTypes(Unpivoted, {
+        {"Period",     type text},
+        {"Budget_USD", type number}
+    }),
+
+    AddKey = Table.AddColumn(BudgetTyped, "Region_Product_Period",
+        each [Region_Product] & "|" & [Period], type text)
+in
+    AddKey
+```
+
+Define name `BudgetTable` on the Budget tab.
+
+---
+
+## Query 6: Fact_Table
+
+The main query. Joins PMS_Raw to Project_Master and FX_Rates, computes USD revenue, flags exceptions, and produces the table the data model uses.
+
+```m
+let
+    Source = PMS_Raw,
+
+    // ─────────────────────────────────────────────────────────────
+    // Join to Project Master to get Region, Product, Client, etc.
+    // ─────────────────────────────────────────────────────────────
+    JoinProject = Table.NestedJoin(
+        Source, {"Project_ID"},
+        Project_Master, {"Project_ID"},
+        "PM", JoinKind.LeftOuter
+    ),
+
+    ExpandProject = Table.ExpandTableColumn(
+        JoinProject, "PM",
+        {"Client", "Region", "Product", "Project_Type", "Internal_3rd_Party", "Region_Product"}
+    ),
+
+    // ─────────────────────────────────────────────────────────────
+    // Join to FX Rates on Currency_Period
+    // ─────────────────────────────────────────────────────────────
+    JoinFX = Table.NestedJoin(
+        ExpandProject, {"Currency_Period"},
+        FX_Rates, {"Currency_Period"},
+        "FX", JoinKind.LeftOuter
+    ),
+
+    ExpandFX = Table.ExpandTableColumn(
+        JoinFX, "FX",
+        {"Spot_Rate", "Budget_Rate"}
+    ),
+
+    // ─────────────────────────────────────────────────────────────
+    // Convert local currency revenue to USD (both reported and CC)
+    // ─────────────────────────────────────────────────────────────
+    AddRevUSD = Table.AddColumn(ExpandFX, "Est_Total_USD",
+        each if [Spot_Rate] = null then null
+             else [Estimated_Total] * [Spot_Rate],
+        type number),
+
+    AddRevUSD_CC = Table.AddColumn(AddRevUSD, "Est_Total_USD_CC",
+        each if [Budget_Rate] = null then null
+             else [Estimated_Total] * [Budget_Rate],
+        type number),
+
+    // ─────────────────────────────────────────────────────────────
+    // Region × Product × Period key for budget join
+    // ─────────────────────────────────────────────────────────────
+    AddRegionProductPeriod = Table.AddColumn(AddRevUSD_CC, "Region_Product_Period",
+        each (try [Region_Product] otherwise "UNMATCHED") & "|" & [Period],
+        type text),
+
+    // ─────────────────────────────────────────────────────────────
+    // Exception flags — these drive the Exceptions tab
+    // ─────────────────────────────────────────────────────────────
+    AddMatchFlag = Table.AddColumn(AddRegionProductPeriod, "Match_Flag",
+        each
+            if [Region] = null then "UNMATCHED PROJECT"
+            else if [Spot_Rate] = null then "MISSING FX"
+            else if [Billable] = "Y" and ([Rate] = null or [Rate] = 0) then "BILLABLE ZERO RATE"
+            else "OK",
+        type text),
+
+    // ─────────────────────────────────────────────────────────────
+    // Effective rate (calculated for analysis tabs)
+    // ─────────────────────────────────────────────────────────────
+    AddEffRate = Table.AddColumn(AddMatchFlag, "Effective_Rate_LC",
+        each if [Hours] = 0 or [Hours] = null then 0
+             else [Estimated_Total] / [Hours],
+        type number),
+
+    // Final column ordering
+    Reordered = Table.SelectColumns(AddEffRate, {
+        "Date", "Period", "Year", "Quarter",
+        "Project_ID", "Client", "Region", "Product", "Region_Product", "Region_Product_Period",
+        "Project_Type", "Internal_3rd_Party",
+        "Task", "Consultant",
+        "Hours", "Billable",
+        "Rate", "Currency", "Effective_Rate_LC", "Estimated_Total",
+        "Spot_Rate", "Budget_Rate",
+        "Est_Total_USD", "Est_Total_USD_CC",
+        "Match_Flag"
+    })
+in
+    Reordered
+```
+
+---
+
+## Query 7: Exceptions
+
+A filtered view of Fact_Table showing only rows that need attention. Load this to a worksheet (not just the data model) so you can review it directly on the Exceptions tab.
+
+```m
+let
+    Source = Fact_Table,
+
+    OnlyExceptions = Table.SelectRows(Source, each [Match_Flag] <> "OK"),
+
+    Reordered = Table.SelectColumns(OnlyExceptions, {
+        "Period",
+        "Project_ID",
+        "Currency",
+        "Hours",
+        "Estimated_Total",
+        "Match_Flag"
+    }),
+
+    SortByFlag = Table.Sort(Reordered, {{"Match_Flag", Order.Ascending}, {"Period", Order.Descending}})
+in
+    SortByFlag
+```
+
+For this query only, **Close & Load To → Table → Existing Worksheet** and point at the Exceptions tab below the summary section.
+
+---
+
+## Data Model Relationships
+
+Open Power Pivot (**Data → Manage Data Model**), switch to **Diagram View**, drag-and-drop to create:
+
+| From | To | Cardinality |
+|---|---|---|
+| `Fact_Table[Project_ID]` | `Project_Master[Project_ID]` | Many → One |
+| `Fact_Table[Currency_Period]` | `FX_Rates[Currency_Period]` | Many → One |
+| `Fact_Table[Region_Product_Period]` | `Budget[Region_Product_Period]` | Many → One |
+| `Project_Master[Region_Product]` | `Region_Product_Map[Region_Product]` | Many → One |
+
+If you also have a Date dimension table (recommended for time intelligence), create:
+| `Fact_Table[Date]` | `Date[Date]` | Many → One |
+
+---
+
+## Performance notes for ~700MB data volume
+
+- **Disable auto-detection of relationships and types** in Power Query options to speed loads
+- **Set `Table.Buffer` on bridge tables only** if joins are slow — don't buffer Fact_Table
+- **Don't load Fact_Table to a worksheet** under any circumstance. Worksheets cap at ~1M rows and would balloon the file
+- **Use the `xlsb` format for the final workbook** if file size becomes an issue — same data model, much smaller footprint
+- **Refresh order**: Bridge tables first (FX, Project Master, Region Map, Budget), then PMS_Raw, then Fact_Table. Power Query usually handles this automatically via dependency graph
+- **For incremental refresh**: if Pro/Premium dataset, configure incremental refresh to only re-pull recent months rather than the full 2-year history every BD1
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Match_Flag = UNMATCHED PROJECT` for many rows | New projects not in Project Master | Add them; rerun |
+| `Match_Flag = MISSING FX` | New currency or new period | Add row to FX Rates tab |
+| Budget variance is huge / nonsensical | `Region_Product_Period` mismatch | Check that bridge keys are identical (case, spacing, separators) |
+| Refresh extremely slow | Folder has too many historical files | Archive files > 24 months to a subfolder excluded by the filter |
+| Privacy levels error on first load | Mix of SharePoint + local data | File → Options → Privacy → Ignore Privacy Levels (acceptable for trusted firm sources) |
