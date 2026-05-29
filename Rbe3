@@ -9,48 +9,45 @@ Sub BuildRPEModelStructure()
     Dim slc As Slicer
     Dim conn As WorkbookConnection
     
+    ' ================== CONFIGURE THESE 5 LINES WITH YOUR ACTUAL NAMES ==================
+    ' Open Power Pivot (Data → Manage Data Model) and look at the table names on the left
+    Dim sCalendarTable   As String: sCalendarTable   = "Calendar"      ' ← Change if needed
+    Dim sMonthField      As String: sMonthField      = "Month"         ' ← Change if needed
+    Dim sRevenueTable    As String: sRevenueTable    = "Revenue"       ' ← Change if needed
+    Dim sRegionField     As String: sRegionField     = "Region"        ' ← Change if needed
+    Dim sServiceLineField As String: sServiceLineField = "ServiceLine" ' ← Change if needed
+    ' =================================================================================
+    
     Set wb = ThisWorkbook
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
-    ' === Check that your Data Model is connected ===
+    ' Check Data Model connection
     On Error Resume Next
     Set conn = wb.Connections("ThisWorkbookDataModel")
     On Error GoTo 0
     If conn Is Nothing Then
-        MsgBox "⚠️ Error: 'ThisWorkbookDataModel' connection not found." & vbCrLf & vbCrLf & _
-               "Please make sure your Power Query tables are loaded to the Data Model, then Refresh All and try again.", vbCritical
+        MsgBox "⚠️ Data Model not found. Make sure your Power Queries are loaded to the Data Model.", vbCritical
         Exit Sub
     End If
     
-    ' === FIXED PivotCache – Version parameter removed for full compatibility ===
-    Set pvtCache = wb.PivotCaches.Create( _
-        SourceType:=xlExternal, _
-        SourceData:=wb.Connections("ThisWorkbookDataModel"))
+    Set pvtCache = wb.PivotCaches.Create(SourceType:=xlExternal, SourceData:=wb.Connections("ThisWorkbookDataModel"))
     
-    ' ===================================================================
-    ' 1. DASHBOARD
-    ' ===================================================================
+    ' === 1. DASHBOARD ===
     Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
     ws.Name = "Dashboard"
     ws.Range("A1").Value = "Revenue per Employee (RPE) - Executive Dashboard"
     ws.Range("A1").Font.Size = 18: ws.Range("A1").Font.Bold = True: ws.Range("A1").Font.Color = RGB(0, 74, 127)
     
-    ws.Range("B3").Value = "Current RPE"
-    ws.Range("B4").Value = "YoY Change"
-    ws.Range("B5").Value = "24-Mo Trend"
-    
     Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Dashboard_RPE")
     With pvt
-        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .CubeFields("[" & sCalendarTable & "].[" & sMonthField & "]").Orientation = xlRowField
         .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
         .AddDataField .CubeFields("[Measures].[Total Revenue]"), "Revenue", xlSum
         .AddDataField .CubeFields("[Measures].[Avg Headcount]"), "Avg Headcount", xlAverage
     End With
     
-    ' ===================================================================
-    ' 2. REVENUE MEASURES
-    ' ===================================================================
+    ' === 2. REVENUE MEASURES ===
     Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
     ws.Name = "Revenue Measures"
     ws.Range("A1").Value = "Revenue Measures & Trends (24 Months)"
@@ -58,14 +55,12 @@ Sub BuildRPEModelStructure()
     
     Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Revenue")
     With pvt
-        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .CubeFields("[" & sCalendarTable & "].[" & sMonthField & "]").Orientation = xlRowField
         .AddDataField .CubeFields("[Measures].[Total Revenue]"), "Revenue", xlSum
         .AddDataField .CubeFields("[Measures].[Revenue Growth %]"), "Growth %", xlAverage
     End With
     
-    ' ===================================================================
-    ' 3. HEADCOUNT MEASURES
-    ' ===================================================================
+    ' === 3. HEADCOUNT MEASURES ===
     Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
     ws.Name = "Headcount Measures"
     ws.Range("A1").Value = "Headcount / FTE Measures & Trends"
@@ -73,14 +68,12 @@ Sub BuildRPEModelStructure()
     
     Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Headcount")
     With pvt
-        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .CubeFields("[" & sCalendarTable & "].[" & sMonthField & "]").Orientation = xlRowField
         .AddDataField .CubeFields("[Measures].[Avg Headcount]"), "Avg Headcount", xlAverage
         .AddDataField .CubeFields("[Measures].[Total FTE]"), "Total FTE", xlAverage
     End With
     
-    ' ===================================================================
-    ' 4. RPE MEASURES
-    ' ===================================================================
+    ' === 4. RPE MEASURES ===
     Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
     ws.Name = "RPE Measures"
     ws.Range("A1").Value = "RPE Core Metrics & 24-Month Trends"
@@ -88,14 +81,12 @@ Sub BuildRPEModelStructure()
     
     Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_RPE")
     With pvt
-        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .CubeFields("[" & sCalendarTable & "].[" & sMonthField & "]").Orientation = xlRowField
         .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
         .AddDataField .CubeFields("[Measures].[RPE YoY %]"), "YoY %", xlAverage
     End With
     
-    ' ===================================================================
-    ' 5. BREAKDOWNS
-    ' ===================================================================
+    ' === 5. BREAKDOWNS ===
     Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
     ws.Name = "Breakdowns"
     ws.Range("A1").Value = "RPE Breakdowns - Region & Service Line"
@@ -103,40 +94,23 @@ Sub BuildRPEModelStructure()
     
     Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Region")
     With pvt
-        .CubeFields("[Revenue].[Region]").Orientation = xlRowField
+        .CubeFields("[" & sRevenueTable & "].[" & sRegionField & "]").Orientation = xlRowField
         .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
     End With
     
     Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("H10"), TableName:="pvt_ServiceLine")
     With pvt
-        .CubeFields("[Revenue].[ServiceLine]").Orientation = xlRowField
+        .CubeFields("[" & sRevenueTable & "].[" & sServiceLineField & "]").Orientation = xlRowField
         .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
     End With
     
     ' Example slicer
-    Set slcCache = wb.SlicerCaches.Add2(pvtCache, "[Revenue].[Region]", "Slicer_Region")
+    Set slcCache = wb.SlicerCaches.Add2(pvtCache, "[" & sRevenueTable & "].[" & sRegionField & "]", "Slicer_Region")
     Set slc = slcCache.Slicers.Add(wb.Sheets("Dashboard"), wb.Sheets("Dashboard").Range("P3"), "Slicer_Region")
     
-    MsgBox "✅ RPE Model structure created successfully!" & vbCrLf & vbCrLf & _
-           "Next steps:" & vbCrLf & _
-           "1. Data → Refresh All" & vbCrLf & _
-           "2. Create the 6 DAX measures (if not already done)" & vbCrLf & _
-           "3. Insert charts from each PivotTable" & vbCrLf & _
-           "4. Format and add more slicers", vbInformation
+    MsgBox "✅ Structure created!" & vbCrLf & vbCrLf & _
+           "If you still get an error, just change the 5 lines at the top of the macro with your exact table/field names and run it again.", vbInformation
     
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
-End Sub
-
-Sub DeleteReportSheets()
-    Dim sh As Worksheet
-    For Each sh In ThisWorkbook.Sheets
-        If sh.Name Like "Dashboard" Or sh.Name Like "Revenue Measures" Or _
-           sh.Name Like "Headcount Measures" Or sh.Name Like "RPE Measures" Or _
-           sh.Name Like "Breakdowns" Then
-            Application.DisplayAlerts = False
-            sh.Delete
-            Application.DisplayAlerts = True
-        End If
-    Next sh
 End Sub
