@@ -1,0 +1,139 @@
+Option Explicit
+
+Sub BuildRPEModelStructure()
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim pvtCache As PivotCache
+    Dim pvt As PivotTable
+    Dim slcCache As SlicerCache
+    Dim slc As Slicer
+    
+    Set wb = ThisWorkbook
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    ' === OPTIONAL: Delete old report sheets (uncomment if you want to start fresh) ===
+    ' Call DeleteReportSheets
+    
+    ' Create PivotCache from your existing Data Model (queries already connected)
+    Set pvtCache = wb.PivotCaches.Create( _
+        SourceType:=xlExternal, _
+        SourceData:=wb.Connections("ThisWorkbookDataModel"), _
+        Version:=xlPivotTableVersion16)
+    
+    ' ===================================================================
+    ' 1. DASHBOARD (Executive Summary - most leaders will only use this)
+    ' ===================================================================
+    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
+    ws.Name = "Dashboard"
+    ws.Range("A1").Value = "Revenue per Employee (RPE) - Executive Dashboard"
+    ws.Range("A1").Font.Size = 18: ws.Range("A1").Font.Bold = True: ws.Range("A1").Font.Color = RGB(0, 74, 127)
+    
+    ' KPI placeholders (replace with Cube formulas or GETPIVOTDATA later)
+    ws.Range("B3").Value = "Current RPE"
+    ws.Range("B4").Value = "YoY Change"
+    ws.Range("B5").Value = "24-Mo Trend"
+    
+    ' Main trend PivotTable
+    Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Dashboard_RPE")
+    With pvt
+        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
+        .AddDataField .CubeFields("[Measures].[Total Revenue]"), "Revenue", xlSum
+        .AddDataField .CubeFields("[Measures].[Avg Headcount]"), "Avg Headcount", xlAverage
+    End With
+    
+    ' ===================================================================
+    ' 2. REVENUE MEASURES
+    ' ===================================================================
+    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
+    ws.Name = "Revenue Measures"
+    ws.Range("A1").Value = "Revenue Measures & Trends (24 Months)"
+    ws.Range("A1").Font.Size = 16: ws.Range("A1").Font.Bold = True
+    
+    Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Revenue")
+    With pvt
+        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .AddDataField .CubeFields("[Measures].[Total Revenue]"), "Revenue", xlSum
+        .AddDataField .CubeFields("[Measures].[Revenue Growth %]"), "Growth %", xlAverage
+    End With
+    
+    ' ===================================================================
+    ' 3. HEADCOUNT MEASURES
+    ' ===================================================================
+    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
+    ws.Name = "Headcount Measures"
+    ws.Range("A1").Value = "Headcount / FTE Measures & Trends"
+    ws.Range("A1").Font.Size = 16: ws.Range("A1").Font.Bold = True
+    
+    Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Headcount")
+    With pvt
+        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .AddDataField .CubeFields("[Measures].[Avg Headcount]"), "Avg Headcount", xlAverage
+        .AddDataField .CubeFields("[Measures].[Total FTE]"), "Total FTE", xlAverage
+    End With
+    
+    ' ===================================================================
+    ' 4. RPE MEASURES
+    ' ===================================================================
+    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
+    ws.Name = "RPE Measures"
+    ws.Range("A1").Value = "RPE Core Metrics & 24-Month Trends"
+    ws.Range("A1").Font.Size = 16: ws.Range("A1").Font.Bold = True
+    
+    Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_RPE")
+    With pvt
+        .CubeFields("[Calendar].[Month]").Orientation = xlRowField
+        .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
+        .AddDataField .CubeFields("[Measures].[RPE YoY %]"), "YoY %", xlAverage
+    End With
+    
+    ' ===================================================================
+    ' 5. BREAKDOWNS (Region + Service Line)
+    ' ===================================================================
+    Set ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
+    ws.Name = "Breakdowns"
+    ws.Range("A1").Value = "RPE Breakdowns - Region & Service Line"
+    ws.Range("A1").Font.Size = 16: ws.Range("A1").Font.Bold = True
+    
+    ' Region Pivot
+    Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("A10"), TableName:="pvt_Region")
+    With pvt
+        .CubeFields("[Revenue].[Region]").Orientation = xlRowField
+        .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
+    End With
+    
+    ' Service Line Pivot
+    Set pvt = pvtCache.CreatePivotTable(TableDestination:=ws.Range("H10"), TableName:="pvt_ServiceLine")
+    With pvt
+        .CubeFields("[Revenue].[ServiceLine]").Orientation = xlRowField
+        .AddDataField .CubeFields("[Measures].[RPE]"), "RPE", xlAverage
+    End With
+    
+    ' Add example slicer to Dashboard
+    Set slcCache = wb.SlicerCaches.Add2(pvtCache, "[Revenue].[Region]", "Slicer_Region")
+    Set slc = slcCache.Slicers.Add(wb.Sheets("Dashboard"), wb.Sheets("Dashboard").Range("P3"), "Slicer_Region")
+    
+    MsgBox "✅ RPE Model structure created!" & vbCrLf & vbCrLf & _
+           "Next steps:" & vbCrLf & _
+           "1. Refresh All (Data → Refresh All)" & vbCrLf & _
+           "2. Create the 6 DAX measures (see instructions below)" & vbCrLf & _
+           "3. Insert charts from each PivotTable" & vbCrLf & _
+           "4. Add remaining slicers and format", vbInformation
+    
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+End Sub
+
+Sub DeleteReportSheets()
+    Dim sh As Worksheet
+    For Each sh In ThisWorkbook.Sheets
+        If sh.Name Like "Dashboard" Or sh.Name Like "Revenue Measures" Or _
+           sh.Name Like "Headcount Measures" Or sh.Name Like "RPE Measures" Or _
+           sh.Name Like "Breakdowns" Then
+            Application.DisplayAlerts = False
+            sh.Delete
+            Application.DisplayAlerts = True
+        End If
+    Next sh
+End Sub
