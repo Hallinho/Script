@@ -1,0 +1,1 @@
+Text.From([Project - Internal id]) & "|" & [Project] & "|" & Text.From([Client - Intacct Customer ID])
