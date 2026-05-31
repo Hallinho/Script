@@ -1,0 +1,69 @@
+Total Hours := SUM(Fact_Hours[Time (Hours)])
+
+Billable Hours := 
+CALCULATE([Total Hours], Fact_Hours[Task - Non-billable] = FALSE)
+
+Non-Billable Hours := 
+CALCULATE([Total Hours], Fact_Hours[Task - Non-billable] = TRUE)
+
+PTO Hours Used := 0   // Replace with your actual PTO flag if you have one later
+
+Total Revenue := 
+SUMX(Fact_Hours, Fact_Hours[Time (Hours)] * Fact_Hours[Charge - Total (USD)])
+
+Billable Revenue := 
+CALCULATE([Total Revenue], Fact_Hours[Task - Non-billable] = FALSE)
+
+Fixed Fee Hours % := 
+DIVIDE(
+    CALCULATE([Total Hours], Fact_Hours[Task - Billing Method] = "Fixed Fee"),
+    [Total Hours]
+)
+
+T&M Hours % := 
+DIVIDE(
+    CALCULATE([Total Hours], Fact_Hours[Task - Billing Method] = "T&M"),
+    [Total Hours]
+)
+
+Recurring Revenue % := 
+DIVIDE(
+    CALCULATE([Total Revenue], Fact_Hours[Revenue type] = "Recurring"),
+    [Total Revenue]
+)
+
+Non-Recurring Revenue % := 
+DIVIDE(
+    CALCULATE([Total Revenue], Fact_Hours[Revenue type] = "Non-Recurring"),
+    [Total Revenue]
+)
+
+Inclusive Revenue % := 
+DIVIDE(
+    CALCULATE([Total Revenue], Fact_Hours[Revenue type] = "Inclusive"),
+    [Total Revenue]
+)
+
+Rolling 12M Hours := 
+CALCULATE([Total Hours], DATESINPERIOD(Dim_Date[Date], MAX(Dim_Date[Date]), -12, MONTH))
+
+Rolling 12M Revenue := 
+CALCULATE([Total Revenue], DATESINPERIOD(Dim_Date[Date], MAX(Dim_Date[Date]), -12, MONTH))
+
+Monthly Revenue per Employee := 
+DIVIDE([Total Revenue], DISTINCTCOUNT(Dim_Employee[EmployeeKey]))
+
+Monthly Revenue per Revenue Product := 
+DIVIDE([Total Revenue], DISTINCTCOUNT(Fact_Hours[Company (w/reclass)]))
+
+Monthly Revenue per Region := 
+DIVIDE([Total Revenue], DISTINCTCOUNT(Dim_Employee[User - User Region]))
+
+Monthly Revenue per Client := 
+DIVIDE([Total Revenue], DISTINCTCOUNT(Dim_Project[Client - Intacct Customer ID]))
+
+Overall Utilization % := DIVIDE([Billable Hours], [Total Hours])
+
+Avg Monthly Revenue per Employee := 
+AVERAGEX(VALUES(Dim_Date[Month]), [Monthly Revenue per Employee])
+
