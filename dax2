@@ -1,0 +1,29 @@
+Create a clean, professional, fully dynamic Summary Dashboard (new worksheet) that becomes the first tab in the workbook. Name the new sheet “Summary Dashboard”.
+Requirements:
+
+Keep the file 100% live – Do NOT convert anything to static values. Do NOT break or duplicate any Power Query connections. Do NOT create new tables that duplicate data. All visuals and calculations must stay connected to the existing Power Pivot data model and continue to refresh when the underlying queries are refreshed.
+Layout – Modern, clean, executive-style dashboard (white/light gray background, professional blue/gray/teal accent colors). Use a clean grid layout with plenty of white space. Title at the top: “Professional Services Firm – Executive Summary Dashboard”.
+Content to include (use existing tables/measures where possible, and create smart new DAX measures only when needed):
+Key performance tiles/KPIs at the top (Revenue, Gross Margin %, Utilization %, Billable Hours, Average Realization Rate, etc.)
+Revenue by Service Line / Practice Area (stacked bar or column chart)
+Revenue by Client / Top 10 Clients (horizontal bar chart)
+Utilization & Billable Hours trend (line or area chart by month/quarter)
+Project Profitability (margin by project type or by manager)
+Resource Utilization by Employee/Team (heat map or bar chart)
+Pipeline / Backlog summary (if data exists) or Work-in-Progress
+Year-over-Year or Quarter-over-Quarter variance cards
+Any other insightful PS-firm metrics that exist in the current data model
+
+Interactivity
+Add relevant slicers (Date, Service Line, Client, Manager/Partner, Employee, etc.) at the top or side so the entire dashboard filters instantly.
+All charts and tables must be PivotCharts / PivotTables connected to the data model (or CUBE formulas if more appropriate).
+
+Best practices
+Use modern Excel formatting (no old-style PivotTable look)
+Add subtle conditional formatting where helpful
+Make it printer-friendly and presentation-ready
+Add a small “Last Refreshed” cell that shows the current date/time
+
+
+After you finish building the dashboard, tell me exactly what you created, list any new DAX measures you added (with their names and formulas), and confirm that the original Power Queries and existing data model remain untouched and fully functional.
+Start now.
